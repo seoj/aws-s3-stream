@@ -33,3 +33,13 @@ try (OutputStream os = new GzipCompressorOutputStream(new S3MultipartUploadOutpu
     }
 }
 ```
+
+## How it works
+
+### S3PrefixTarInputStream
+
+As soon as the first byte is attempted to be read from the input stream, a new thread is started (let's call this the ReaderThread). The ReaderThread does a combination of AWS S3's ListObjects and GetObject using the supplied information in the ListObjectsRequest. Each result of GetObject returns a stream for a single file in S3. The ReaderThread reads from this stream and pipes the output which is fed back to the caller of the original S3PrefixTarInputStream read. The S3PrefixTarInputStream blocks read until data is available or end of stream is reached. All underlying streams are closed and the ReaderThread joined with the caller thread when the S3PrefixTarInputStream is closed.
+
+### S3MultipartUploadOutputStream
+
+As soon as the first byte is attempted to be written into the S3MultipartUploadOutputStream, a new thread is started (call this the WriterThread). The WriterThread initiates a multipart upload, then proceeds to buffer the written bytes in memory. When the buffer is full, it does an UploadPart using the buffered bytes as the content of the upload. Once S3MultipartUploadOutputStream is closed, the remaining bytes in the buffer are uploaded as the final part of the upload, then the CompleteMultipartUpload is done. The WriterThread is joined with the caller thread when the S3MultipartUploadOutputStream is closed.
